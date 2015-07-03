@@ -628,6 +628,52 @@ namespace DeepBotServices
         }
 
         /// <summary>
+        /// Fetch a list of users from DeepBot's database ordered by number of points (descending)
+        /// </summary>
+        /// <param name="offset">First user to fetch (0 for start of database). Optional (defaults to 0).</param>
+        /// <param name="count">Number of users to fetch (max of 100 set by DeepBot). Optional (defaults to the maximum).</param>
+        /// <exception cref="InvalidOperationException">Thrown if not connected to the bot and AutoConnect == false, or if the bot did not respond within ResponseWait milliseconds</exception>
+        /// <exception cref="InvalidOperationException">Thrown if you specify a count without an offset.</exception>
+        /// <exception cref="DeepBotException">Thrown if the user list could not be fetched.</exception>
+        /// <returns>A list of Users. Empty list if attempting to access users beyond the end of the database.</returns>
+        public List<User> GetTopUsers(int offset = -1, int count = -1)
+        {
+            if (offset == -1 && count == -1)
+                blockingCall("api|get_top_users");
+
+            else if (offset != -1 && count == -1)
+                blockingCall("api|get_top_users|" + offset);
+
+            else if (offset == -1 && count != -1)
+                throw new InvalidOperationException("You must also specify an offset when specifying a count");
+
+            else
+                blockingCall("api|get_top_users|" + offset + "|" + count);
+
+            if (response is string)
+                if (response == "List empty")
+                    return new List<User>();
+                else
+                    throw new DeepBotException(response);
+
+            List<User> r = new List<User>();
+            foreach (var s in response)
+                r.Add(new User(this)
+                {
+                    Name = s.user,
+                    Points = (int)s.points,
+                    Minutes = (int)s.watch_time,
+                    VIPLevel = (VIP)s.vip,
+                    UserLevel = (Level)s.mod,
+                    FirstSeen = DateTime.Parse(s.join_date),
+                    LastSeen = DateTime.Parse(s.last_seen),
+                    VIPExpiry = DateTime.Parse(s.vip_expiry)
+                });
+
+            return r;
+        }
+
+        /// <summary>
         /// Add points to a user
         /// </summary>
         /// <param name="username">The username to add points to</param>

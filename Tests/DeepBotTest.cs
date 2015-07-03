@@ -167,6 +167,14 @@ namespace DeepBotTest
 
                 foreach (var m in regulars)
                     Console.WriteLine(m.Name + "    -> " + m.Minutes);
+
+                // 20. Get the top 20 users
+                Console.WriteLine("Getting top 20 users...");
+
+                botUsers = bot.GetTopUsers(0, 20).ToDictionary(e => e.Name);
+
+                foreach (var n in botUsers)
+                    Console.WriteLine(n.Key + "     -> " + n.Value.Points);
             }
             catch (DeepBotException ex)
             {
