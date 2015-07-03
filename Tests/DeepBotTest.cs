@@ -52,9 +52,6 @@ namespace DeepBotTest
             User u = new User(bot);
             User copy = u.Clone();
 
-            // Turn caching off as it breaks the asserts
-            bot.AutoCache = false;
-
             // Regression test all API functions (run with F5 debug to see raw message exchange)
             try
             {
@@ -68,6 +65,9 @@ namespace DeepBotTest
                 u = bot[userName];
                 Debug.Assert(u != null && u.Name == userName);
                 copy = bot[userName];
+
+                // Turn caching off as it breaks the asserts
+                bot.AutoCache = false;
 
                 // 3. Set VIP expiry to a specific date (24 hours in the past) [set_vip_expiry]
                 Console.WriteLine("VIP expiry set 1 day in the past");

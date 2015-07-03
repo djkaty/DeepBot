@@ -81,8 +81,6 @@ namespace DeepBotServices
     /// </summary>
     public class User
     {
-        // TODO: Auto-update if not refreshed in last 60 seconds
-
         private DeepBot source;
 
         /// <summary>
@@ -185,7 +183,7 @@ namespace DeepBotServices
         /// </summary>
         public DateTime FirstSeen
         {
-            get { update(); return FirstSeen; }
+            get { update(); return firstSeen; }
             set { firstSeen = value; }
         }
 
@@ -196,7 +194,7 @@ namespace DeepBotServices
         /// </summary>
         public DateTime LastSeen
         {
-            get { update(); return LastSeen; }
+            get { update(); return lastSeen; }
             set { lastSeen = value; }
         }
 
@@ -572,9 +570,6 @@ namespace DeepBotServices
                 return u;
             }
         }
-
-        // TODO: User caching
-        // TODO: Auto-cache all bot users on startup (option)
 
         /// <summary>
         /// Fetch a DeepBot user
