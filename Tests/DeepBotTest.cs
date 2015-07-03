@@ -50,7 +50,10 @@ namespace DeepBotTest
 
             // Test user (you can usually just use GetUser(), this is just for the exception handling in the finally block below)
             User u = new User(bot);
-            User copy = new User(bot);
+            User copy = u.Clone();
+
+            // Turn caching off as it breaks the asserts
+            bot.AutoCache = false;
 
             // Regression test all API functions (run with F5 debug to see raw message exchange)
             try
@@ -182,6 +185,11 @@ namespace DeepBotTest
 
                 foreach (var n in botUsers)
                     Console.WriteLine(n.Key + "     -> " + n.Value.Points);
+
+                // 21. Get the same user 1000 times with caching (check debug output)
+                bot.AutoCache = false;
+                for (int i = 0; i < 1000; i++)
+                    bot.GetUser(userName);
             }
             catch (DeepBotException ex)
             {

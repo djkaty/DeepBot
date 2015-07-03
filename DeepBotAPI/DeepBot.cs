@@ -86,6 +86,11 @@ namespace DeepBotServices
         private DeepBot source;
 
         /// <summary>
+        /// The last time the user was synced from the bot, if auto-caching is enabled
+        /// </summary>
+        public DateTime LastUpdate { get; private set; }
+
+        /// <summary>
         /// The username
         /// </summary>
         public string Name { get; }
@@ -102,6 +107,7 @@ namespace DeepBotServices
         {
             get
             {
+                update();
                 return points;
             }
             set
@@ -122,10 +128,15 @@ namespace DeepBotServices
             }
         }
 
+        private int minutes;
         /// <summary>
         /// The total number of minutes the user has watched the stream for.
         /// </summary>
-        public int Minutes { get; }
+        public int Minutes
+        {
+            get { update(); return minutes; }
+            set { minutes = value; }
+        }
 
         /// <summary>
         /// Get the user's total number of watched hours from local storage
@@ -148,7 +159,7 @@ namespace DeepBotServices
         /// <exception cref="DeepBotException">Thrown if the VIP level could not be set, or if invalid parameters were supplied.</exception>
         public VIP VIPLevel
         {
-            get { return vipLevel; }
+            get { update(); return vipLevel; }
             set
             {
                 source.SetVIPLevel(Name, value);
@@ -156,20 +167,38 @@ namespace DeepBotServices
             }
         }
 
+        private Level userLevel;
+
         /// <summary>
         /// The user's moderation level.
         /// </summary>
-        public Level UserLevel { get; }
+        public Level UserLevel
+        {
+            get { update(); return userLevel; }
+            set { userLevel = value; }
+        }
+
+        private DateTime firstSeen;
 
         /// <summary>
         /// The user's initial join date.
         /// </summary>
-        public DateTime FirstSeen { get; }
+        public DateTime FirstSeen
+        {
+            get { update(); return FirstSeen; }
+            set { firstSeen = value; }
+        }
+
+        private DateTime lastSeen;
 
         /// <summary>
         /// The user's last seen date.
         /// </summary>
-        public DateTime LastSeen { get; }
+        public DateTime LastSeen
+        {
+            get { update(); return LastSeen; }
+            set { lastSeen = value; }
+        }
 
         private DateTime vipExpiry;
 
@@ -180,7 +209,7 @@ namespace DeepBotServices
         /// <exception cref="DeepBotException">Thrown if the VIP expiry could not be set, or if invalid parameters were supplied.</exception>
         public DateTime VIPExpiry
         {
-            get { return vipExpiry; }
+            get { update();  return vipExpiry; }
             set
             {
                 source.SetVIPExpiry(Name, value);
@@ -206,12 +235,41 @@ namespace DeepBotServices
             source = src;
             Name = name;
             this.points = points;
-            Minutes = minutes;
+            this.minutes = minutes;
             vipLevel = viplevel;
-            UserLevel = userlevel;
-            FirstSeen = (firstseen == null ? DateTime.Now : (DateTime) firstseen);
-            LastSeen = (lastseen == null ? DateTime.Now : (DateTime) lastseen);
+            userLevel = userlevel;
+            firstSeen = (firstseen == null ? DateTime.Now : (DateTime) firstseen);
+            lastSeen = (lastseen == null ? DateTime.Now : (DateTime) lastseen);
             vipExpiry = (vipexpiry == null ? DateTime.Now : (DateTime)vipexpiry);
+            LastUpdate = DateTime.Now;
+        }
+
+        /// <summary>
+        /// Update from server if necessary
+        /// </summary>
+        private void update()
+        {
+            if (!source.AutoCache)
+                return;
+
+            User u = source.GetUser(Name);
+            
+            points = u.points;
+            minutes = u.minutes;
+            vipLevel = u.vipLevel;
+            userLevel = u.userLevel;
+            firstSeen = u.firstSeen;
+            lastSeen = u.lastSeen;
+            vipExpiry = u.vipExpiry;
+            LastUpdate = DateTime.Now;
+        }
+
+        /// <summary>
+        /// Close a user.
+        /// </summary>
+        public User Clone()
+        {
+            return (User)this.MemberwiseClone();
         }
 
         /// <summary>
@@ -221,7 +279,7 @@ namespace DeepBotServices
         public override string ToString()
         {
             return string.Format("[Name = {0}, Points = {1}, Minutes = {2}, VIPLevel = {3}, UserLevel = {4}, FirstSeen = {5}, LastSeen = {6}, VIPExpiry = {7}]",
-                Name, Points, Minutes, VIPLevel, UserLevel, FirstSeen, LastSeen, VIPExpiry);
+                Name, points, minutes, vipLevel, userLevel, firstSeen, lastSeen, vipExpiry);
         }
 
         /// <summary>
@@ -398,12 +456,19 @@ namespace DeepBotServices
         /// <summary>
         /// True to seamlessly connect to the bot and authenticate when required for a transaction, and automatically reconnect if there is a connection failure (eg. bot restart). False to use classical connection paradigm.
         /// </summary>
-        public bool AutoConnect { get; set; }
+        public bool AutoConnect { get; set; } = true;
 
         /// <summary>
         /// Milliseconds to wait for bot response before we assume failure (if DeepBot does not reply due to not understanding or receiving message)
         /// </summary>
-        public int ResponseWait { get; set; }
+        public int ResponseWait { get; set; } = 5000;
+
+        /// <summary>
+        /// Get or set whether to auto-cache users (refresh if more than 60 seconds has elapsed since the last request for a given user)
+        /// </summary>
+        public bool AutoCache { get; set; } = true;
+
+        private Dictionary<string, User> cachedUsers = new Dictionary<string, User>();
 
         // Last response message
         private dynamic response;
@@ -418,7 +483,7 @@ namespace DeepBotServices
         /// </summary>
         /// <param name="uri">Server URI</param>
         /// <param name="secret">API secret</param>
-        public DeepBot(string uri, string secret = "") { URI = uri; Secret = secret; AutoConnect = true; ResponseWait = 5000; Authenticated = false;  }
+        public DeepBot(string uri, string secret = "") { URI = uri; Secret = secret; }
 
         /// <summary>
         /// Connect with optional server URI and optional API secret. Uses constructor or property values if none supplied. Not required if AutoConnect == true.
@@ -521,6 +586,11 @@ namespace DeepBotServices
         /// <remarks>To throw an exception instead of returning null if the user does not exist, use the DeepBot username string indexer syntax instead.</remarks>
         public User GetUser(string username)
         {
+            if (AutoCache)
+                if (cachedUsers.ContainsKey(username))
+                    if (cachedUsers[username].LastUpdate < DateTime.Now.AddSeconds(60))
+                        return cachedUsers[username];
+
             blockingCall("api|get_user|" + username);
 
             if (response is string)
@@ -529,8 +599,13 @@ namespace DeepBotServices
                 else
                     throw new DeepBotException(response);
 
-            return new User(this, (string)response.user, (int)response.points, (int)response.watch_time, (VIP)response.vip, (Level)response.mod,
+            User u = new User(this, (string)response.user, (int)response.points, (int)response.watch_time, (VIP)response.vip, (Level)response.mod,
                 DateTime.Parse(response.join_date), DateTime.Parse(response.last_seen), DateTime.Parse(response.vip_expiry));
+
+            if (AutoCache)
+                cachedUsers[u.Name] = u;
+
+            return u;
         }
 
         /// <summary>
@@ -544,14 +619,7 @@ namespace DeepBotServices
         {
             try
             {
-                blockingCall("api|get_user|" + username);
-
-                if (response is string)
-                    if (response == "User not found")
-                        return null;
-
-                return new User(this, (string)response.user, (int)response.points, (int)response.watch_time, (VIP)response.vip, (Level)response.mod,
-                    DateTime.Parse(response.join_date), DateTime.Parse(response.last_seen), DateTime.Parse(response.vip_expiry));
+                return GetUser(username);
             }
             catch (Exception)
             {
@@ -573,7 +641,7 @@ namespace DeepBotServices
         }
 
         /// <summary>
-        /// Fetch a list of users from DeepBot's database
+        /// Fetch a list of users from DeepBot's database. Does not use caching.
         /// </summary>
         /// <param name="offset">First user to fetch (0 for start of database). Optional (defaults to 0).</param>
         /// <param name="count">Number of users to fetch (max of 100 set by DeepBot). Optional (defaults to the maximum).</param>
@@ -610,7 +678,7 @@ namespace DeepBotServices
         }
 
         /// <summary>
-        /// Fetch a list of every user in DeepBot's database.
+        /// Fetch a list of every user in DeepBot's database. Does not use caching.
         /// </summary>
         /// <exception cref="InvalidOperationException">Thrown if not connected to the bot and AutoConnect == false, or if the bot did not respond within ResponseWait milliseconds</exception>
         /// <exception cref="InvalidOperationException">Thrown if you specify a count without an offset.</exception>
@@ -638,7 +706,7 @@ namespace DeepBotServices
         }
 
         /// <summary>
-        /// Fetch a list of users from DeepBot's database ordered by number of points (descending)
+        /// Fetch a list of users from DeepBot's database ordered by number of points (descending). Does not use caching.
         /// </summary>
         /// <param name="offset">First user to fetch (0 for start of database). Optional (defaults to 0).</param>
         /// <param name="count">Number of users to fetch (max of 100 set by DeepBot). Optional (defaults to the maximum).</param>
