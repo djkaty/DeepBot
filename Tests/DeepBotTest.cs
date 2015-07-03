@@ -34,7 +34,11 @@ namespace DeepBotTest
             {
                 Console.WriteLine("Attempt to log in with incorrect credentials: " + ex.Message);
             }
-            
+
+            // 0a. Try to get a user without being connected (shouldn't throw exception)
+            User tryUser = bot.TryGetUser(userName);
+            Debug.Assert(tryUser == null);
+
             // Set the right string
             bot.Secret = "D0A8EZPRYKPIBdAMJARQUJWAEeZLFCWNYZdGI";
 
@@ -66,31 +70,34 @@ namespace DeepBotTest
                 Console.WriteLine("VIP expiry set 1 day in the past");
 
                 DateTime expiry = DateTime.Now.Subtract(TimeSpan.FromDays(1));
-                u.SetVIPExpiry(expiry);
+                u.VIPExpiry = expiry;
                 Debug.Assert(u.VIPExpiry == expiry && u == bot[userName]);
 
                 // 4. Set explicit VIP level and date (1 day in the future) [set_vip]
                 Console.WriteLine("VIP set explicitly (gold, +1 day)");
 
-                u.SetVIP(VIP.Gold, 1);
+                u.VIPLevel = VIP.Gold;
+                u.SetVIPExpiry(DateTime.Now.AddDays(1).ToString("s", System.Globalization.CultureInfo.InvariantCulture));
                 Debug.Assert(u.VIPLevel == VIP.Gold && u.VIPExpiry > DateTime.Now.AddMinutes(60 * 23 + 59) && u.VIPExpiry < DateTime.Now.AddMinutes(60 * 24 + 1) && u == bot[userName]);
 
                 // 5. Add more time to existing VIP (1 day in the future) [set_vip]
                 Console.WriteLine("VIP extended (gold, +1 day)");
 
-                u.SetVIP(VIP.Gold, 1);
+                u.VIPLevel = VIP.Gold;
+                u.AddVIPDays(1);
+
                 Debug.Assert(u.VIPLevel == VIP.Gold && u.VIPExpiry > DateTime.Now.AddMinutes(60 * 47 + 59) && u.VIPExpiry < DateTime.Now.AddMinutes(60 * 48 + 1) && u == bot[userName]);
 
                 // 6. Make VIP expire now [set_vip_expiry]
                 Console.WriteLine("VIP expired");
 
-                u.SetVIPExpiry(DateTime.Now);
+                u.VIPExpiry = DateTime.Now;
                 Debug.Assert(u.VIPExpiry <= DateTime.Now && u == bot[userName]);
 
                 // 7. Clear VIP explicitly [set_vip]
                 Console.WriteLine("VIP cleared explicitly");
 
-                u.SetVIP(VIP.Regular, 0);
+                u.VIPLevel = VIP.Regular;
                 Debug.Assert(u.VIPLevel == VIP.Regular && u == bot[userName]);
 
                 // 8. Add points to escrow [add_to_escrow] (no exception on success)
@@ -141,12 +148,12 @@ namespace DeepBotTest
                 Console.WriteLine("Get rank: " + u.GetRank());
 
                 // 16. Get watch hours [get_hours] (no exception on success)
-                Console.WriteLine("Get viewing hours: " + u.GetHours());
+                Console.WriteLine("Get viewing hours: " + u.Hours);
 
                 // (Restore the user)
                 u.Points = copy.Points;
-                u.SetVIP(copy.VIPLevel);
-                u.SetVIPExpiry(copy.VIPExpiry);
+                u.VIPLevel = copy.VIPLevel;
+                u.VIPExpiry = copy.VIPExpiry;
 
                 Console.WriteLine("User restored");
 
@@ -188,8 +195,8 @@ namespace DeepBotTest
             {
                 // (Restore the user)
                 u.Points = copy.Points;
-                u.SetVIP(copy.VIPLevel);
-                u.SetVIPExpiry(copy.VIPExpiry);
+                u.VIPLevel = copy.VIPLevel;
+                u.VIPExpiry = copy.VIPExpiry;
 
                 Console.WriteLine("User restored");
             }

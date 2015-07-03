@@ -54,13 +54,13 @@ namespace DeepBotServices
         /// Normal user
         /// </summary>
         User = 0,
-
+        
         /// <summary>
         /// Channel moderator ("mod level 1")
-        /// </summary>
+        /// </summary>t
         ChannelMod,
 
-        /// <summary>
+        /// <summary>t
         /// DeepBot moderator ("mod level 2")
         /// </summary>
         BotMod,
@@ -85,21 +85,16 @@ namespace DeepBotServices
 
         private DeepBot source;
 
-        // TODO: Fields should only be settable once (via constructor)
-        // TODO: GetHours should be a property
-        // TODO: Setting Points semantics should be changed
-        // TODO: Setting VIP level and VIP expiry should cause API to be called (remove SetVIPExpiry)
-
         /// <summary>
         /// The username
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; }
 
         private int points = -1;
 
         /// <summary>
-        /// Number of points
-        /// <remarks>Retrieves the local value of points. When setting, sets the point value locally on first assignment. On subsequent sets, calls the API to update points in DeepBot automatically. Local point value is only changed if the remote update was successful.</remarks>
+        /// Gets or sets the number of points locally and remotely. Only updates locally on remote success.
+        /// <remarks>Retrieves the local value of points. When setting, calls the API to update points in DeepBot automatically. Local point value is only changed if the remote update was successful.</remarks>
         /// <exception cref="DeepBotException">Throws if the points value cannot be changed on DeepBot.</exception>
         /// <exception cref="InvalidOperationException">Thrown if not connected to the bot and AutoConnect == false, or if the bot did not respond within ResponseWait milliseconds</exception>
         /// </summary>
@@ -111,66 +106,113 @@ namespace DeepBotServices
             }
             set
             {
-                // First-time set?
-                if (points == -1)
-                    points = value;
-
                 // API sync
+                // Note we don't use SetPoints because that might corrupt timed point additions in the bot itself
+                bool ok = true;
+
+                if (points > value)
+                    ok = source.DelPoints(Name, points - value);
+                else if (points < value)
+                    ok = source.AddPoints(Name, value - points);
+
+                if (ok)
+                    points = source[Name].Points;
                 else
-                {
-                    // Note we don't use SetPoints because that might corrupt timed point additions in the bot itself
-                    bool ok = true;
-
-                    if (points > value)
-                        ok = source.DelPoints(Name, points - value);
-                    else if (points < value)
-                        ok = source.AddPoints(Name, value - points);
-
-                    if (ok)
-                        points = source[Name].Points;
-                    else
-                        throw new DeepBotException("Could not change points value");
-                }
+                    throw new DeepBotException("Could not change points value");
             }
         }
 
         /// <summary>
         /// The total number of minutes the user has watched the stream for.
         /// </summary>
-        public int Minutes { get; set; }
+        public int Minutes { get; }
 
-        // TODO: Make this reflect on the server
         /// <summary>
-        /// The user's VIP level.
+        /// Get the user's total number of watched hours from local storage
         /// </summary>
-        public VIP VIPLevel { get; set; }
+        /// <returns>User watched hours</returns>
+        public double Hours
+        {
+            get
+            {
+                return (double)Minutes / 60;
+            }
+        }
+
+        private VIP vipLevel;
+
+        /// <summary>
+        /// Gets or sets the user's VIP level, locally and remotely. Only updates locally on remote success.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">Thrown if not connected to the bot and AutoConnect == false, or if the bot did not respond within ResponseWait milliseconds</exception>
+        /// <exception cref="DeepBotException">Thrown if the VIP level could not be set, or if invalid parameters were supplied.</exception>
+        public VIP VIPLevel
+        {
+            get { return vipLevel; }
+            set
+            {
+                source.SetVIPLevel(Name, value);
+                vipLevel = value;
+            }
+        }
 
         /// <summary>
         /// The user's moderation level.
         /// </summary>
-        public Level UserLevel { get; set; }
+        public Level UserLevel { get; }
 
         /// <summary>
         /// The user's initial join date.
         /// </summary>
-        public DateTime FirstSeen { get; set; }
+        public DateTime FirstSeen { get; }
 
         /// <summary>
         /// The user's last seen date.
         /// </summary>
-        public DateTime LastSeen { get; set; }
+        public DateTime LastSeen { get; }
 
-        // TODO: Make this reflect on the server
+        private DateTime vipExpiry;
+
         /// <summary>
         /// The user's VIP expiry date.
         /// </summary>
-        public DateTime VIPExpiry { get; set; }
+        /// <exception cref="InvalidOperationException">Thrown if not connected to the bot and AutoConnect == false, or if the bot did not respond within ResponseWait milliseconds</exception>
+        /// <exception cref="DeepBotException">Thrown if the VIP expiry could not be set, or if invalid parameters were supplied.</exception>
+        public DateTime VIPExpiry
+        {
+            get { return vipExpiry; }
+            set
+            {
+                source.SetVIPExpiry(Name, value);
+                vipExpiry = value;
+            }
+        }
 
         /// <summary>
-        /// <para></para>
+        /// Constructor
         /// </summary>
         /// <param name="src">The DeepBot instance this user belongs to.</param>
-        public User(DeepBot src) { source = src; }
+        /// <param name="firstseen">First seen date of user</param>
+        /// <param name="lastseen">Last seen date of user</param>
+        /// <param name="minutes">Watch minutes of user</param>
+        /// <param name="name">Name of user</param>
+        /// <param name="points">Number of points</param>
+        /// <param name="userlevel">User level</param>
+        /// <param name="vipexpiry">VIP expiry time</param>
+        /// <param name="viplevel">VIP level of user</param>
+        public User(DeepBot src, string name = "", int points = 0, int minutes = 0, VIP viplevel = VIP.Regular, Level userlevel = Level.User,
+            DateTime? firstseen = null, DateTime? lastseen = null, DateTime? vipexpiry = null)
+        {
+            source = src;
+            Name = name;
+            this.points = points;
+            Minutes = minutes;
+            vipLevel = viplevel;
+            UserLevel = userlevel;
+            FirstSeen = (firstseen == null ? DateTime.Now : (DateTime) firstseen);
+            LastSeen = (lastseen == null ? DateTime.Now : (DateTime) lastseen);
+            vipExpiry = (vipexpiry == null ? DateTime.Now : (DateTime)vipexpiry);
+        }
 
         /// <summary>
         /// Format the DeepBot user as a human-readable string
@@ -224,7 +266,7 @@ namespace DeepBotServices
         }
 
         /// <summary>
-        /// Set the exact number of points for a user locally and on DeepBot.
+        /// Set the exact number of points explicitly for a user locally and remotely. Only updates locally on remote success.
         /// </summary>
         /// <param name="points">Number of points</param>
         /// <exception cref="InvalidOperationException">Thrown if not connected to the bot and AutoConnect == false, or if the bot did not respond within ResponseWait milliseconds</exception>
@@ -250,40 +292,14 @@ namespace DeepBotServices
         }
 
         /// <summary>
-        /// Get the user's total number of watched hours from local storage
-        /// </summary>
-        /// <returns>User watched hours</returns>
-        public double GetHours()
-        {
-            return (double)Minutes / 60;
-        }
-
-        /// <summary>
-        /// Set the user's VIP level and number of days to add, locally and remotely
+        /// Adds a number of days to the user's VIP access, locally and remotely. Only updates locally on remote success.
         /// </summary>
         /// <exception cref="InvalidOperationException">Thrown if not connected to the bot and AutoConnect == false, or if the bot did not respond within ResponseWait milliseconds</exception>
-        /// <param name="level">Desired VIP level</param>
         /// <param name="daysToAdd">Number of days to add. If the current expiry is in the past, sets the expiry to the specified number of days from now.</param>
-        public void SetVIP(VIP level, int daysToAdd = 0)
+        public void AddVIPDays(int daysToAdd)
         {
-            if ((int)level == 10)
-                level = VIP.Regular;
-
-            source.SetVIP(Name, level, daysToAdd);
-            VIPLevel = level;
-            VIPExpiry = source[Name].VIPExpiry;
-        }
-
-        /// <summary>
-        /// Set the user's VIP expiry time.
-        /// </summary>
-        /// <exception cref="InvalidOperationException">Thrown if not connected to the bot and AutoConnect == false, or if the bot did not respond within ResponseWait milliseconds</exception>
-        /// <exception cref="DeepBotException">Thrown if the VIP expiry could not be set, or if invalid parameters were supplied.</exception>
-        /// <param name="expiry">The VIP expiry time in local time</param>
-        public void SetVIPExpiry(DateTime expiry)
-        {
-            source.SetVIPExpiry(Name, expiry);
-            VIPExpiry = expiry;
+            source.SetVIPLevel(Name, vipLevel, daysToAdd);
+            vipExpiry = source[Name].VIPExpiry;
         }
 
         /// <summary>
@@ -295,7 +311,6 @@ namespace DeepBotServices
         /// <param name="expiry">The VIP expiry time in local time in the ISO format "yyyy-MM-ddThh:mm:ss"</param>
         public void SetVIPExpiry(string expiry)
         {
-            source.SetVIPExpiry(Name, expiry);
             VIPExpiry = DateTime.ParseExact(expiry, "s", System.Globalization.CultureInfo.InvariantCulture);
         }
 
@@ -368,7 +383,7 @@ namespace DeepBotServices
         /// <summary>
         /// True if the API secret has been authenticated, false otherwise
         /// </summary>
-        public bool Authenticated { get; private set; }
+        public bool? Authenticated { get; private set; } = null;
 
         /// <summary>
         /// URI to DeepBot server (default is ws://localhost:3337)
@@ -423,7 +438,7 @@ namespace DeepBotServices
             // Connect to server
             do
             {
-                Authenticated = false;
+                Authenticated = null;
 
                 ws = new WebSocket(URI);
                 ws.Opened += websocket_Opened;
@@ -432,32 +447,31 @@ namespace DeepBotServices
                 ws.MessageReceived += websocket_MessageReceived;
                 ws.Open();
 
-                for (int w = 0; w < ResponseWait && (ws.State == WebSocketState.Connecting || Connected) && !Authenticated && Secret != ""; w += 100)
+                for (int w = 0; w < ResponseWait && (ws.State == WebSocketState.Connecting || Connected) && Authenticated == null; w += 100)
                     System.Threading.Thread.Sleep(100);
 
-                if (!Authenticated)
+                if (Authenticated == false)
+                    throw new DeepBotException("Invalid API Secret");
+
+                if (Authenticated == null)
                     if (!AutoConnect)
                         throw new InvalidOperationException("Could not connect to DeepBot");
                     else
                     {
                         ws.Close();
-
-                        if (Secret == "")
-                            throw new DeepBotException("Invalid API Secret");
-
                         System.Threading.Thread.Sleep(2000);
                     }
             }
-            while (!Authenticated && AutoConnect);
+            while (Authenticated == null && AutoConnect);
 
-            return Authenticated;
+            return (bool) Authenticated;
         }
 
         private void blockingCall(string msg)
         {
             response = null;
 
-            if (!Authenticated)
+            if (Authenticated != true)
                 if (!AutoConnect)
                     throw new InvalidOperationException("Not connected");
                 else
@@ -494,10 +508,8 @@ namespace DeepBotServices
             }
         }
 
-        // TODO: Make TryGetUser
         // TODO: User caching
         // TODO: Auto-cache all bot users on startup (option)
-        // TODO: get_top_users
 
         /// <summary>
         /// Fetch a DeepBot user
@@ -517,17 +529,34 @@ namespace DeepBotServices
                 else
                     throw new DeepBotException(response);
 
-            return new User(this)
+            return new User(this, (string)response.user, (int)response.points, (int)response.watch_time, (VIP)response.vip, (Level)response.mod,
+                DateTime.Parse(response.join_date), DateTime.Parse(response.last_seen), DateTime.Parse(response.vip_expiry));
+        }
+
+        /// <summary>
+        /// Try to fetch a DeepBot user, return null if not found or failure
+        /// </summary>
+        /// <exception cref="InvalidOperationException">Thrown if not connected to the bot and AutoConnect == false, or if the bot did not respond within ResponseWait milliseconds</exception>
+        /// <exception cref="DeepBotException">Thrown if there was an error processing the request on the bot</exception>
+        /// <param name="username">The user to retrieve</param>
+        /// <returns>Strongly typed representation of the DeepBot user; null if the user does not exist</returns>
+        public User TryGetUser(string username)
+        {
+            try
             {
-                Name = response.user,
-                Points = (int)response.points,
-                Minutes = (int)response.watch_time,
-                VIPLevel = (VIP)response.vip,
-                UserLevel = (Level)response.mod,
-                FirstSeen = DateTime.Parse(response.join_date),
-                LastSeen = DateTime.Parse(response.last_seen),
-                VIPExpiry = DateTime.Parse(response.vip_expiry)
-            };
+                blockingCall("api|get_user|" + username);
+
+                if (response is string)
+                    if (response == "User not found")
+                        return null;
+
+                return new User(this, (string)response.user, (int)response.points, (int)response.watch_time, (VIP)response.vip, (Level)response.mod,
+                    DateTime.Parse(response.join_date), DateTime.Parse(response.last_seen), DateTime.Parse(response.vip_expiry));
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         /// <summary>
@@ -538,19 +567,9 @@ namespace DeepBotServices
         {
             get
             {
-                return GetUsersCount();
+                blockingCall("api|get_users_count");
+                return response;
             }
-        }
-
-        /// <summary>
-        /// Get number of users in DeepBot's database
-        /// </summary>
-        /// <exception cref="InvalidOperationException">Thrown if not connected to the bot and AutoConnect == false, or if the bot did not respond within ResponseWait milliseconds</exception>
-        public int GetUsersCount()
-        {
-            blockingCall("api|get_users_count");
-
-            return response;
         }
 
         /// <summary>
@@ -584,17 +603,8 @@ namespace DeepBotServices
 
             List<User> r = new List<User>();
             foreach (var s in response)
-                r.Add(new User(this)
-                      {
-                          Name = s.user,
-                          Points = (int)s.points,
-                          Minutes = (int)s.watch_time,
-                          VIPLevel = (VIP)s.vip,
-                          UserLevel = (Level)s.mod,
-                          FirstSeen = DateTime.Parse(s.join_date),
-                          LastSeen = DateTime.Parse(s.last_seen),
-                          VIPExpiry = DateTime.Parse(s.vip_expiry)
-                      });
+                r.Add(new User(this, (string)s.user, (int)s.points, (int)s.watch_time, (VIP)s.vip, (Level)s.mod,
+                    DateTime.Parse(s.join_date), DateTime.Parse(s.last_seen), DateTime.Parse(s.vip_expiry)));
 
             return r;
         }
@@ -658,17 +668,8 @@ namespace DeepBotServices
 
             List<User> r = new List<User>();
             foreach (var s in response)
-                r.Add(new User(this)
-                {
-                    Name = s.user,
-                    Points = (int)s.points,
-                    Minutes = (int)s.watch_time,
-                    VIPLevel = (VIP)s.vip,
-                    UserLevel = (Level)s.mod,
-                    FirstSeen = DateTime.Parse(s.join_date),
-                    LastSeen = DateTime.Parse(s.last_seen),
-                    VIPExpiry = DateTime.Parse(s.vip_expiry)
-                });
+                r.Add(new User(this, (string)s.user, (int)s.points, (int)s.watch_time, (VIP)s.vip, (Level)s.mod,
+                    DateTime.Parse(s.join_date), DateTime.Parse(s.last_seen), DateTime.Parse(s.vip_expiry)));
 
             return r;
         }
@@ -750,7 +751,7 @@ namespace DeepBotServices
         /// <param name="username">The username to set VIP on</param>
         /// <param name="level">Desired VIP level</param>
         /// <param name="daysToAdd">Number of days to add. If the current expiry is in the past, sets the expiry to the specified number of days from now.</param>
-        public void SetVIP(string username, VIP level, int daysToAdd)
+        public void SetVIPLevel(string username, VIP level, int daysToAdd = 0)
         {
             if ((int)level == 10)
                 level = VIP.Regular;
@@ -855,8 +856,8 @@ namespace DeepBotServices
                         Authenticated = (response.msg == "success");
 
                         if (response.msg == "incorrect api secret")
-                            Secret = "";
-                        else if (!Authenticated)
+                            Authenticated = false;
+                        else if (Authenticated != true)
                             throw new DeepBotException((string)response.msg);
                         break;
 
