@@ -234,7 +234,7 @@ namespace DeepBotServices
             Name = name;
             this.points = points;
             this.minutes = minutes;
-            vipLevel = viplevel;
+            vipLevel = ((int)viplevel == 10 ? VIP.Regular : viplevel);
             userLevel = userlevel;
             firstSeen = (firstseen == null ? DateTime.Now : (DateTime) firstseen);
             lastSeen = (lastseen == null ? DateTime.Now : (DateTime) lastseen);
